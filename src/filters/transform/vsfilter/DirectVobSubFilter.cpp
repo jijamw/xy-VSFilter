@@ -94,7 +94,9 @@ CDirectVobSubFilter::CDirectVobSubFilter(LPUNKNOWN punk, HRESULT* phr, const GUI
 	m_tbid.fRunOnce = false;
 	m_tbid.fShowIcon = (theApp.m_AppName.Find(_T("zplayer"), 0) < 0 || !!theApp.GetProfileInt(ResStr(IDS_R_GENERAL), ResStr(IDS_RG_ENABLEZPICON), 0));
 
-    m_xy_sub_filter = new XySubFilter(this, 0);
+    m_xy_sub_filter = new XySubFilter(this, 0, phr);
+    if(phr && FAILED(*phr)) return;
+    m_xy_sub_filter2 = m_xy_sub_filter;
 
 	memset(&m_CurrentVIH2, 0, sizeof(VIDEOINFOHEADER2));
 
@@ -107,7 +109,7 @@ CDirectVobSubFilter::~CDirectVobSubFilter()
 {
 	CAutoLock cAutoLock(&m_csQueueLock);
 
-    delete m_xy_sub_filter; m_xy_sub_filter = NULL;
+    //delete m_xy_sub_filter; m_xy_sub_filter = NULL;
 
 	DbgLog((LOG_TRACE, 3, _T("CDirectVobSubFilter::~CDirectVobSubFilter")));
 }
@@ -826,12 +828,33 @@ HRESULT CDirectVobSubFilter2::JoinFilterGraph(IFilterGraph* pGraph, LPCWSTR pNam
     XY_AUTO_TIMING(_T("CDirectVobSubFilter2::JoinFilterGraph"));
 	if(pGraph)
 	{
-		BeginEnumFilters(pGraph, pEF, pBF)
-		{
-			if(pBF != (IBaseFilter*)this && CComQIPtr<IDirectVobSub>(pBF))
-				return E_FAIL;
-		}
-		EndEnumFilters
+        BeginEnumFilters(pGraph, pEF, pBF)
+        {
+            if(pBF != (IBaseFilter*)this && CComQIPtr<IDirectVobSub>(pBF))
+            {
+                CLSID clsid;
+                pBF->GetClassID(&clsid);
+                if (clsid==__uuidof(CDirectVobSubFilter2))
+                {
+                    return E_FAIL;
+                }
+            }
+        }
+        EndEnumFilters
+
+        CComQIPtr<IBaseFilter> sub_filter = m_xy_sub_filter2;
+        HRESULT hr = pGraph->AddFilter(sub_filter, L"xy_sub_filter");
+        if (FAILED(hr))
+        {
+            return hr;
+        }
+
+		//BeginEnumFilters(pGraph, pEF, pBF)
+		//{
+		//	if(pBF != (IBaseFilter*)this && CComQIPtr<IDirectVobSub>(pBF))
+		//		return E_FAIL;
+		//}
+		//EndEnumFilters
 
 		// don't look... we will do some serious graph hacking again...
 		//
